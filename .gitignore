@@ -16,3 +16,8 @@ dist/
 # Editor
 .vscode/
 .idea/
+
+# Ignore backend storage artifacts (db and generated text files)
+backend/storage/*.db
+backend/storage/uploads/*.txt
+backend/storage/extracted/*.txt
