@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+ENV/
+*.env
+
+# Node / Next
+node_modules/
+.next/
+out/
+dist/
+
+# Editor
+.vscode/
+.idea/
