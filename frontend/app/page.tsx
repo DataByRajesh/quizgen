@@ -28,7 +28,8 @@ export default function Home() {
       // Upload file
       const fd = new FormData();
       fd.append("file", file);
-      const up = await fetch("http://127.0.0.1:8000/upload", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const up = await fetch(`${apiUrl}/upload`, {
         method: "POST",
         body: fd,
       });
@@ -38,7 +39,7 @@ export default function Home() {
       setDocId(id);
 
       // Request generation
-      const gen = await fetch("http://127.0.0.1:8000/generate", {
+      const gen = await fetch(`${apiUrl}/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ doc_id: id, num_questions: numQuestions }),

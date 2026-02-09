@@ -4,7 +4,8 @@
 - Code is ready: Frontend built and linted, backend tested (9/9 tests pass), servers run locally.
 - Frontend: Next.js app with upload/generate page and documents management.
 - Backend: FastAPI with endpoints for upload, generate MCQs, list documents, etc.
-- Fixed: TypeScript lint error in frontend.
+- Fixed: TypeScript lint error in frontend; added vercel.json to fix 404 errors on static export for client-side routing.
+- Deployment: Frontend deployed to Vercel at https://quizgen-eight.vercel.app/; build completed successfully with dependencies installed, static pages prerendered for routes /, /_not-found, /documents, and deploying outputs. Backend deployed to Render (URL noted in Vercel env vars).
 
 ## Quick Deploy Instructions (ASAP)
 1. **Push to GitHub**: Create a GitHub repo and push the `quizgen/` folder.
@@ -30,3 +31,4 @@
 ## Followup Steps
 - Verify full flow: Upload doc, generate MCQs, view in documents page.
 - If issues, check Render/Vercel logs.
+- Deployment completed successfully; build logs show dependencies installed, static pages prerendered, and deploying outputs.
