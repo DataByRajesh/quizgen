@@ -46,8 +46,8 @@ export default function Home() {
       if (!gen.ok) throw new Error(`Generate failed: ${gen.statusText}`);
       const genData = await gen.json();
       setMcqs(genData.mcqs || []);
-    } catch (err: any) {
-      setError(err?.message || String(err));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
