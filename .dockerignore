@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+ENV/
+*.env
+backend/storage/*.db
+backend/storage/uploads/*.txt
+backend/storage/extracted/*.txt
+node_modules/
+.git
+.github
+frontend/.next
