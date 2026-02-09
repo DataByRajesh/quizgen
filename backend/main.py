@@ -56,23 +56,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Compatibility: provide a DOC_STORE-like mapping for existing tests that expect an in-memory dict
-
-
-class _DocStoreCompat:
-    def __contains__(self, key: str) -> bool:
-        return db.get_document(key) is not None
-
-    def __getitem__(self, key: str) -> Dict[str, Any]:
-        doc = db.get_document(key)
-        if not doc:
-            raise KeyError(key)
-        return {"filename": doc.get("filename"), "text": doc.get("text")}
-
-
-DOC_STORE = _DocStoreCompat()
-
-
 # Configuration: optional API key auth and rate limiting
 _API_KEYS = set([k.strip() for k in os.getenv("API_KEYS", "").split(",") if k.strip()])
 _RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "0"))

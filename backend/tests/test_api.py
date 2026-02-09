@@ -10,7 +10,8 @@ TEST_BACKEND_DIR = os.path.dirname(os.path.dirname(__file__))
 if TEST_BACKEND_DIR not in sys.path:
     sys.path.insert(0, TEST_BACKEND_DIR)
 
-from main import app, UPLOAD_DIR, EXTRACTED_DIR, DOC_STORE
+from main import app, UPLOAD_DIR, EXTRACTED_DIR
+import db
 
 
 @pytest.mark.asyncio
@@ -38,8 +39,9 @@ async def test_upload_and_generate_txt(tmp_path):
         doc_id = data.get("doc_id")
         assert doc_id is not None
 
-        # Ensure stored in DOC_STORE
-        assert doc_id in DOC_STORE
+        # Ensure stored in sqlite DB
+        stored = db.get_document(doc_id)
+        assert stored is not None
 
         gen = await ac.post("/generate", json={"doc_id": doc_id, "num_questions": 2})
         assert gen.status_code == 200
