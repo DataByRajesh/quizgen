@@ -26,4 +26,4 @@ EXPOSE 8000
 
 ENV PORT=8000
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "${PORT}"]
+CMD uvicorn backend.main:app --host 0.0.0.0 --port $PORT
