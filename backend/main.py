@@ -16,6 +16,7 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from time import sleep
 
 try:
     import pdfplumber
@@ -99,7 +100,6 @@ def call_openai_generate(text: str, n: int) -> List[Dict[str, Any]]:
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY not set")
     openai.api_key = api_key
-
     system = (
         "You are an assistant that generates multiple-choice questions (MCQs). "
         "Given an input document, produce exactly the requested number of questions. "
@@ -111,29 +111,84 @@ def call_openai_generate(text: str, n: int) -> List[Dict[str, Any]]:
         f"Document:\n" + text + "\n\n" + f"Generate {n} MCQs."
     )
 
-    # Use ChatCompletion API
-    resp = openai.ChatCompletion.create(
-        model=os.getenv("MODEL", "gpt-4o-mini"),
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0.2,
-        max_tokens=1500,
-    )
-    content = resp.choices[0].message.content
+    # Use ChatCompletion API with retries and validation
+    max_attempts = 3
+    backoff = 1.0
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = openai.ChatCompletion.create(
+                model=os.getenv("MODEL", "gpt-4o-mini"),
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                temperature=0.0 if attempt > 1 else 0.2,
+                max_tokens=1500,
+            )
+            content = resp.choices[0].message.content
 
-    # Expect JSON array; try to parse
-    try:
-        data = json.loads(content)
-        if isinstance(data, list):
-            return data
-        raise ValueError("OpenAI did not return a list")
-    except Exception:
-        # Fallback: return dummy MCQs if parse fails
-        return generate_dummy_mcqs(text, n)
+            # Try parse and validate
+            parsed = json.loads(content)
+            validated = validate_mcqs(parsed)
+            return validated[:n] if len(validated) >= n else (validated + generate_dummy_mcqs(text, n - len(validated)))
+        except Exception:
+            # If not last attempt, try a recovery request asking for JSON-only output
+            if attempt < max_attempts:
+                try:
+                    recovery_prompt = (
+                        "The previous response could not be parsed as JSON matching the required schema. "
+                        "Respond with a JSON array only (no surrounding text). Each element must be an object with keys: "
+                        "'question' (string), 'options' (array of 4 strings), 'answer_index' (integer 0-3)."
+                    )
+                    resp = openai.ChatCompletion.create(
+                        model=os.getenv("MODEL", "gpt-4o-mini"),
+                        messages=[{"role": "system", "content": system}, {"role": "user", "content": recovery_prompt + "\n\nOriginal document:\n" + text}],
+                        temperature=0.0,
+                        max_tokens=1500,
+                    )
+                    content = resp.choices[0].message.content
+                    parsed = json.loads(content)
+                    validated = validate_mcqs(parsed)
+                    return validated[:n] if len(validated) >= n else (validated + generate_dummy_mcqs(text, n - len(validated)))
+                except Exception:
+                    sleep(backoff)
+                    backoff *= 2
+                    continue
+            else:
+                break
+    # All attempts failed — fallback to deterministic generator
+    return generate_dummy_mcqs(text, n)
 
 
 class GenerateRequest(BaseModel):
     doc_id: str
     num_questions: int = 5
+
+
+class MCQItem(BaseModel):
+    question: str
+    options: List[str]
+    answer_index: int
+
+
+def validate_mcqs(data: Any) -> List[Dict[str, Any]]:
+    """Validate parsed JSON against the MCQItem schema and return list of dicts.
+
+    Raises ValueError if validation fails.
+    """
+    if not isinstance(data, list):
+        raise ValueError("MCQ response is not a list")
+    validated: List[Dict[str, Any]] = []
+    for idx, item in enumerate(data):
+        try:
+            mcq = MCQItem(**item)
+            # enforce exactly 4 options
+            if len(mcq.options) != 4:
+                raise ValueError(f"item {idx} must have 4 options")
+            if not (0 <= mcq.answer_index < 4):
+                raise ValueError(f"item {idx} answer_index out of range")
+            # Use model_dump for Pydantic v2 compatibility
+            validated.append(mcq.model_dump())
+        except Exception as e:
+            raise ValueError(f"Invalid MCQ item at index {idx}: {e}")
+    return validated
 
 
 @app.post("/upload")
