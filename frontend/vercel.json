@@ -1,9 +1,8 @@
 {
-  "routes": [
+  "rewrites": [
     {
-      "src": "/((?!_next).*)",
-      "dest": "/index.html",
-      "type": "rewrite"
+      "source": "/((?!_next).*)",
+      "destination": "/index.html"
     }
   ]
 }
