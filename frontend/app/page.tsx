@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 
 type MCQ = {
   question: string;
@@ -56,6 +57,11 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-8">
       <div className="w-full max-w-2xl bg-white rounded-lg shadow p-8">
         <h1 className="text-2xl font-semibold mb-4">Quiz Generator</h1>
+        <div className="mb-4">
+          <Link href="/documents" className="text-sm text-blue-600 underline">
+            View uploaded documents
+          </Link>
+        </div>
 
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">Upload document</label>
