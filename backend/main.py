@@ -10,13 +10,22 @@ Storage: in-memory dict `DOC_STORE` holds extracted text and metadata.
 import os
 import uuid
 import json
-from typing import Dict, Any, List
+import time
+import threading
+from typing import Dict, Any, List, Optional
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from time import sleep
+
+try:
+    # when running as package
+    from . import db
+except Exception:
+    # when tests import this module as a top-level module (sys.path points to backend/)
+    import db
 
 try:
     import pdfplumber
@@ -47,8 +56,75 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Simple in-memory store: doc_id -> {filename, text}
-DOC_STORE: Dict[str, Dict[str, Any]] = {}
+# Compatibility: provide a DOC_STORE-like mapping for existing tests that expect an in-memory dict
+
+
+class _DocStoreCompat:
+    def __contains__(self, key: str) -> bool:
+        return db.get_document(key) is not None
+
+    def __getitem__(self, key: str) -> Dict[str, Any]:
+        doc = db.get_document(key)
+        if not doc:
+            raise KeyError(key)
+        return {"filename": doc.get("filename"), "text": doc.get("text")}
+
+
+DOC_STORE = _DocStoreCompat()
+
+
+# Configuration: optional API key auth and rate limiting
+_API_KEYS = set([k.strip() for k in os.getenv("API_KEYS", "").split(",") if k.strip()])
+_RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "0"))
+
+# in-memory token buckets: key -> {tokens, last_refill}
+_buckets: Dict[str, Dict[str, float]] = {}
+_bucket_lock = threading.Lock()
+
+
+def _refill_bucket(key: str):
+    if _RATE_LIMIT_PER_MIN <= 0:
+        return
+    now = time.time()
+    with _bucket_lock:
+        b = _buckets.get(key)
+        if not b:
+            _buckets[key] = {"tokens": float(_RATE_LIMIT_PER_MIN), "last": now}
+            return
+        elapsed = now - b["last"]
+        # tokens to add
+        add = elapsed * (_RATE_LIMIT_PER_MIN / 60.0)
+        b["tokens"] = min(float(_RATE_LIMIT_PER_MIN), b["tokens"] + add)
+        b["last"] = now
+
+
+def _consume_token(key: str) -> bool:
+    if _RATE_LIMIT_PER_MIN <= 0:
+        return True
+    _refill_bucket(key)
+    with _bucket_lock:
+        b = _buckets.setdefault(key, {"tokens": float(_RATE_LIMIT_PER_MIN), "last": time.time()})
+        if b["tokens"] >= 1.0:
+            b["tokens"] -= 1.0
+            return True
+        return False
+
+
+def require_api_key(x_api_key: Optional[str] = Header(None)) -> Optional[str]:
+    # If API_KEYS is not set, authentication is disabled (for tests/dev)
+    if not _API_KEYS:
+        return x_api_key or "__anon__"
+    if not x_api_key or x_api_key not in _API_KEYS:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return x_api_key
+
+
+def rate_limit_dependency(api_key: Optional[str] = Depends(require_api_key)):
+    # Use provided api_key (or __anon__) as bucket key
+    key = api_key or "__anon__"
+    if not _consume_token(key):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    return True
 
 
 def extract_text_from_pdf(path: str) -> str:
@@ -192,7 +268,7 @@ def validate_mcqs(data: Any) -> List[Dict[str, Any]]:
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), _auth=Depends(rate_limit_dependency)):
     # Save uploaded file to disk
     contents = await file.read()
     doc_id = str(uuid.uuid4())
@@ -214,20 +290,23 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to extract text: {e}")
 
-    # store in-memory and write extracted text to disk
-    DOC_STORE[doc_id] = {"filename": file.filename, "text": text}
+    # persist extracted text to disk and to SQLite DB
     extracted_path = os.path.join(EXTRACTED_DIR, f"{doc_id}.txt")
     with open(extracted_path, "w", encoding="utf-8") as ef:
         ef.write(text)
+
+    # store in sqlite DB
+    db.create_document(doc_id=doc_id, filename=file.filename, upload_path=save_path, extracted_path=extracted_path, text=text)
 
     return JSONResponse({"doc_id": doc_id})
 
 
 @app.post("/generate")
-async def generate_mcqs(req: GenerateRequest):
-    if req.doc_id not in DOC_STORE:
+async def generate_mcqs(req: GenerateRequest, _auth=Depends(rate_limit_dependency)):
+    doc = db.get_document(req.doc_id)
+    if not doc:
         raise HTTPException(status_code=404, detail="doc_id not found")
-    text = DOC_STORE[req.doc_id]["text"]
+    text = doc.get("text", "")
     # Try using OpenAI if configured, otherwise fallback
     try:
         mcqs = call_openai_generate(text, req.num_questions)
