@@ -16,7 +16,7 @@ from typing import Dict, Any, List, Optional
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel
 from time import sleep
 
@@ -309,6 +309,27 @@ async def list_documents(_auth=Depends(require_api_key)):
 @app.get("/health")
 def health():
     return JSONResponse({"status": "ok"})
+
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+        """Simple landing page with links to API endpoints."""
+        html = """
+        <html>
+            <head><title>quizgen API</title></head>
+            <body style="font-family: Arial, sans-serif; max-width: 60ch; margin: 2rem;">
+                <h1>quizgen API</h1>
+                <p>This is the quizgen backend. Available endpoints:</p>
+                <ul>
+                    <li><a href="/health">/health</a> — service status</li>
+                    <li><a href="/documents">/documents</a> — list uploaded documents</li>
+                    <li><a href="/docs">/docs</a> — OpenAPI docs</li>
+                </ul>
+                <p>Use <code>/upload</code> (multipart) to upload a file and <code>/generate</code> to generate MCQs.</p>
+            </body>
+        </html>
+        """
+        return HTMLResponse(content=html)
 
 if __name__ == "__main__":
     import uvicorn
