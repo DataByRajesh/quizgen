@@ -67,13 +67,26 @@ def get_document(doc_id: str):
     }
 
 
-def list_documents(limit: int = 100):
+def list_documents(limit: int = 100, offset: int = 0, q: str | None = None):
+    """Return documents with optional pagination and simple text search.
+
+    - limit: max number of rows to return
+    - offset: rows to skip (for pagination)
+    - q: optional search term to match filename or excerpt of text
+    """
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(
-        "SELECT id, filename, upload_path, extracted_path, uploaded_at FROM documents ORDER BY uploaded_at DESC LIMIT ?",
-        (limit,)
-    )
+    if q:
+        like = f"%{q}%"
+        cur.execute(
+            "SELECT id, filename, upload_path, extracted_path, uploaded_at FROM documents WHERE filename LIKE ? OR text LIKE ? ORDER BY uploaded_at DESC LIMIT ? OFFSET ?",
+            (like, like, limit, offset),
+        )
+    else:
+        cur.execute(
+            "SELECT id, filename, upload_path, extracted_path, uploaded_at FROM documents ORDER BY uploaded_at DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
     rows = cur.fetchall()
     conn.close()
     docs = []

@@ -16,7 +16,7 @@ from typing import Dict, Any, List, Optional
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from pydantic import BaseModel
 from time import sleep
 
@@ -300,10 +300,29 @@ async def generate_mcqs(req: GenerateRequest, _auth=Depends(rate_limit_dependenc
 
 
 @app.get("/documents")
-async def list_documents(_auth=Depends(require_api_key)):
-    """Return a list of stored documents (id, filename, uploaded_at)."""
-    docs = db.list_documents()
+async def list_documents(q: Optional[str] = None, limit: int = 20, offset: int = 0, _auth=Depends(require_api_key)):
+    """Return a list of stored documents (id, filename, uploaded_at).
+
+    Supports optional query `q` (search filename/text), `limit`, and `offset` for pagination.
+    """
+    docs = db.list_documents(limit=limit, offset=offset, q=q)
     return JSONResponse({"documents": docs})
+
+
+@app.get("/files/{doc_id}")
+async def get_uploaded_file(doc_id: str, _auth=Depends(require_api_key)):
+    """Serve the original uploaded file for a document as an attachment/download.
+
+    Returns 404 if no such document or the file is missing.
+    """
+    doc = db.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="doc_id not found")
+    upload_path = doc.get("upload_path")
+    if not upload_path or not os.path.exists(upload_path):
+        raise HTTPException(status_code=404, detail="uploaded file not found")
+    # Use FileResponse to stream the file, hint filename to original filename
+    return FileResponse(path=upload_path, filename=doc.get("filename"), media_type="application/octet-stream")
 
 
 @app.get("/health")
