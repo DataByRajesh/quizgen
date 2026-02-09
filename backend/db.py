@@ -4,7 +4,8 @@ import threading
 import datetime
 
 BASE_DIR = os.path.dirname(__file__)
-DB_PATH = os.path.join(BASE_DIR, "storage", "quizgen.db")
+# Allow overriding DB location for tests or deployments
+DB_PATH = os.getenv("QUIZGEN_DB_PATH", os.path.join(BASE_DIR, "storage", "quizgen.db"))
 _lock = threading.Lock()
 
 
@@ -39,7 +40,7 @@ def create_document(doc_id: str, filename: str, upload_path: str, extracted_path
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO documents (id, filename, upload_path, extracted_path, text, uploaded_at) VALUES (?,?,?,?,?,?)",
-        (doc_id, filename, upload_path, extracted_path, text, datetime.datetime.utcnow().isoformat()),
+        (doc_id, filename, upload_path, extracted_path, text, datetime.datetime.now(datetime.timezone.utc).isoformat()),
     )
     conn.commit()
     conn.close()
@@ -64,6 +65,27 @@ def get_document(doc_id: str):
         "text": row[4],
         "uploaded_at": row[5],
     }
+
+
+def list_documents(limit: int = 100):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, filename, upload_path, extracted_path, uploaded_at FROM documents ORDER BY uploaded_at DESC LIMIT ?",
+        (limit,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    docs = []
+    for r in rows:
+        docs.append({
+            "id": r[0],
+            "filename": r[1],
+            "upload_path": r[2],
+            "extracted_path": r[3],
+            "uploaded_at": r[4],
+        })
+    return docs
 
 
 # initialize DB on import

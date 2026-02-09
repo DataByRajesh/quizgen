@@ -299,6 +299,13 @@ async def generate_mcqs(req: GenerateRequest, _auth=Depends(rate_limit_dependenc
     return JSONResponse({"doc_id": req.doc_id, "mcqs": mcqs})
 
 
+@app.get("/documents")
+async def list_documents(_auth=Depends(require_api_key)):
+    """Return a list of stored documents (id, filename, uploaded_at)."""
+    docs = db.list_documents()
+    return JSONResponse({"documents": docs})
+
+
 @app.get("/health")
 def health():
     return JSONResponse({"status": "ok"})
